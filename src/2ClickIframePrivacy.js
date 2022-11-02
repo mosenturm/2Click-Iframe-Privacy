@@ -1,17 +1,26 @@
 /*!
+ * fork of:
  * 2Click-Iframe-Privacy v0.3.0
  * https://github.com/01-Scripts/2Click-Iframe-Privacy
  * 
  * Licensed MIT © 2018-2019 Michael Lorer - https://www.01-scripts.de/
+ * 
+ * extended by Andreas Kaiser
+ * andreas@tracking-garden.com
+ * 
+ * https://github.com/mosenturm/2Click-Iframe-Privacy
+ * 
+ * 
  */
 
- var _2ClickIframePrivacy = new function() {
+var _2ClickIframePrivacy = new function() {
 
     var config = {
         enableCookies: true,
         useSessionCookie: true,
         cookieNamespace: '_2ClickIPEnable-',
         showContentLabel: 'Inhalt anzeigen',
+        giveConsentLabel: 'Service akzeptieren',
         rememberChoiceLabel: 'Auswahl merken',
         privacyPolicyLabel: 'Datenschutzerklärung',
         privacyPolicyUrl: false
@@ -29,6 +38,18 @@
         {
             type: 'calendar',
             description: 'Zum Aktivieren des eingebetteten Kalenders bitte auf den Link klicken. Durch das Aktivieren werden Daten an den jeweiligen Anbieter übermittelt. Weitere Informationen können unserer Datenschutzerklärung entnommen werden.<br />'
+        }
+    );
+
+    this.consentTypes = new Array(
+        {
+            consentType: 'YouTube'
+        },
+        {
+            consentType: 'GoogleMaps'
+        },
+        {
+            consentType: 'GoogleCalendar'
         }
     );
 
@@ -50,10 +71,26 @@
     // Create <div>-element within the respective iframe to display the defined data-security message and get consent for loading the iframe content.
     function wrap(el, wrapper, type, text) {
         el.parentNode.insertBefore(wrapper, el);
+        wrapper.id = type + '-' + el.id;
         wrapper.className = 'privacy-msg privacy-'+type+'-msg';
         wrapper.style.width = el.clientWidth+'px';
         wrapper.style.height = el.clientHeight+'px';
-        wrapper.innerHTML = text +'<a href="#foo" onclick="_2ClickIframePrivacy.EnableContent(\''+ type +'\'); return false;">'+config.showContentLabel+'</a>';
+        // only show this element without consent
+        wrapper.innerHTML = text
+                            + '<a href="#foo" onclick="_2ClickIframePrivacy.EnableContent(\''
+                            + type 
+                            + '\', \'\'); return false;">'
+                            + config.giveConsentLabel
+                            + '</a>';
+        // give consent for all elements of this type
+        wrapper.innerHTML = wrapper.innerHTML
+                            + '</br><a href="#bar" onclick="_2ClickIframePrivacy.EnableContent(\''
+                            + type 
+                            + '\', \'' 
+                            + wrapper.id 
+                            + '\'); return false;">'
+                            + config.showContentLabel
+                            + '</a>';
         if(config.enableCookies){
             wrapper.innerHTML = wrapper.innerHTML + '<br /><input type="checkbox" name="remind-\''+ type +'\'" /> <label>'+config.rememberChoiceLabel+'</label>';
         }
@@ -64,7 +101,66 @@
         wrapper.appendChild(el);
     }
 
-    this.EnableContent = function (type){
+    function showAll(types, type) {
+        // change all elements of the give type
+        var x = document.querySelectorAll('div.privacy-'+type+'-msg p');
+        for (i = 0; i < x.length; i++) {
+            x[i].parentNode.removeChild(x[i]);
+        }
+
+        x = document.querySelectorAll('div.privacy-'+type+'-msg');
+        for (i = 0; i < x.length; i++) {
+            var parent = x[i].parentNode;
+
+            // Move all children out of the element
+            while (x[i].firstChild) parent.insertBefore(x[i].firstChild, x[i]);
+
+            // Remove the empty element
+            parent.removeChild(x[i]);
+        }
+
+        x = document.querySelectorAll('iframe[data-2click-type="'+type+'"]');
+        for (i = 0; i < x.length; i++) {
+            x[i].src = x[i].getAttribute("data-src");
+        }
+
+        // If available, execute the callback that is defined for the currently active type
+        console.log("this.types: ", this.types);
+        for (i = 0; i < types.length; i++) {
+            if(types[i].type == type && types[i].callback) {
+                window[types[i].callback]();
+            }
+        }
+
+    }
+
+    function showOne(type, id) {
+        // change all elements of the give type
+        var x = document.querySelector('div#'+id+' p');
+        x.parentNode.removeChild(x);
+
+        x = document.querySelector('div#'+id);
+        var parent = x.parentNode;
+
+        // Move all children out of the element
+        while (x.firstChild) parent.insertBefore(x.firstChild, x);
+
+        // Remove the empty element
+        parent.removeChild(x);
+
+        x = document.querySelector('iframe#'+id.split("-")[1]);
+        x.src = x.getAttribute("data-src");
+
+        // If available, execute the callback that is defined for the currently active type
+        // for (i = 0; i < this.types.length; i++) {
+        //     if(this.types[i].type == type && this.types[i].callback) {
+        //         window[this.types[i].callback]();
+        //     }
+        // }
+
+    }
+
+    this.EnableContent = function (type, id){
         var i;
 
         // Cookies globally enabled by config?
@@ -88,32 +184,12 @@
             }
         }
 
-        var x = document.querySelectorAll('div.privacy-'+type+'-msg p');
-        for (i = 0; i < x.length; i++) {
-            x[i].parentNode.removeChild(x[i]);
-        }
-
-        x = document.querySelectorAll('div.privacy-'+type+'-msg');
-        for (i = 0; i < x.length; i++) {
-            var parent = x[i].parentNode;
-
-            // Move all children out of the element
-            while (x[i].firstChild) parent.insertBefore(x[i].firstChild, x[i]);
-
-            // Remove the empty element
-            parent.removeChild(x[i]);
-        }
-
-        x = document.querySelectorAll('iframe[data-2click-type="'+type+'"]');
-        for (i = 0; i < x.length; i++) {
-            x[i].src = x[i].getAttribute("data-src");
-        }
-
-        // If available, execute the callback that is defined for the currently active type
-        for (i = 0; i < this.types.length; i++) {
-            if(this.types[i].type == type && this.types[i].callback) {
-                window[this.types[i].callback]();
-            }
+        if (id == '') {
+            console.log("Without ID: ", id);
+            showAll(this.types, type);
+        } else {
+            console.log("With ID: ", id);
+            showOne(type, id);
         }
     }
 
@@ -145,7 +221,7 @@
             this.types = Userconfig.CustomTypes;
         }
 
-        for (i = 0; i < this.types.length; i++) {
+        for (var i = 0; i < this.types.length; i++) {
             var selector = document.querySelectorAll('iframe[data-2click-type="'+this.types[i].type+'"]');
 
             var x;
